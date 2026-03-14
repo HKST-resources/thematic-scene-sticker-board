@@ -19,7 +19,6 @@
             background-color: var(--bg-color);
         }
 
-        /* 側邊欄 */
         #sidebar {
             width: var(--sidebar-width); background: white;
             border-right: 1px solid #d1d9e6; display: flex;
@@ -51,13 +50,12 @@
         }
         .sticker-item:hover { border-color: var(--primary-blue); }
 
-        /* 遊戲舞台 */
         #stage {
             flex-grow: 1; position: relative;
-            background-size: contain; /* 確保背景圖完整顯示，不被裁切 */
+            background-size: contain; 
             background-position: center;
             background-repeat: no-repeat;
-            background-color: #e0e0e0; /* 如果圖比例不對，周圍顯示灰色 */
+            background-color: #e0e0e0;
             overflow: hidden; touch-action: none;
         }
 
@@ -65,6 +63,8 @@
             position: absolute; cursor: move; width: 150px;
             user-select: none; touch-action: none;
             transform-origin: center center;
+            /* 避免點擊時出現藍色外框 */
+            -webkit-tap-highlight-color: transparent;
         }
 
         .overlay-info {
@@ -117,6 +117,9 @@
     const drawer = document.getElementById('sticker-drawer');
     const themeSelect = document.getElementById('theme-select');
 
+    // 全域變數，紀錄目前正在操作的貼紙
+    let activeSticker = null;
+
     function init() {
         for (const key in themeData) {
             let opt = document.createElement('option');
@@ -142,43 +145,46 @@
     function addToStage(src) {
         const sticker = document.createElement('img');
         sticker.src = src; sticker.className = 'placed-item';
-        sticker.style.left = '50px'; sticker.style.top = '50px';
+        sticker.style.left = '100px'; sticker.style.top = '100px';
 
+        // 每個貼紙獨立的縮放比例
+        let currentScale = 1;
+        let initialDist = 0;
         let isDragging = false;
         let startX, startY, initX, initY;
-        let scale = 1;
-        let initialDist = 0;
 
         const getDist = (touches) => {
-            return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+            return Math.hypot(touches[0].clientX - touches[1].clientX, touches[1].clientY - touches[1].clientY);
         };
 
-        const startMove = (e) => {
+        const startAction = (e) => {
+            activeSticker = sticker; // 設定當前操作對象
+            sticker.style.zIndex = 2000; // 置頂
+
             if (e.touches && e.touches.length === 2) {
-                // 進入縮放模式
                 isDragging = false;
                 initialDist = getDist(e.touches);
             } else {
-                // 進入拖動模式
                 isDragging = true;
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 startX = clientX; startY = clientY;
                 initX = sticker.offsetLeft; initY = sticker.offsetTop;
-                sticker.style.zIndex = 1000;
             }
         };
 
-        const onMove = (e) => {
+        const onAction = (e) => {
+            if (activeSticker !== sticker) return; // 重要：如果不是目前操作的貼紙，就不執行邏輯
+
             if (e.touches && e.touches.length === 2) {
                 // 處理雙指縮放
                 const currentDist = getDist(e.touches);
-                const diff = currentDist / initialDist;
-                scale = Math.min(Math.max(0.5, scale * diff), 3); // 限制縮放倍率在 0.5 到 3 之間
-                sticker.style.transform = `scale(${scale})`;
+                const ratio = currentDist / initialDist;
+                currentScale = Math.min(Math.max(0.3, currentScale * ratio), 4);
+                sticker.style.transform = `scale(${currentScale})`;
                 initialDist = currentDist;
             } else if (isDragging) {
-                // 處理單指拖動
+                // 處理單指移動
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 sticker.style.left = (initX + (clientX - startX)) + 'px';
@@ -186,14 +192,27 @@
             }
         };
 
-        const stopMove = () => { isDragging = false; sticker.style.zIndex = 10; };
+        const stopAction = () => {
+            isDragging = false;
+            if (activeSticker === sticker) {
+                sticker.style.zIndex = 10;
+                activeSticker = null; // 釋放操作對象
+            }
+        };
 
-        sticker.addEventListener('mousedown', startMove);
-        sticker.addEventListener('touchstart', startMove, {passive: false});
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('touchmove', onMove, {passive: false});
-        window.addEventListener('mouseup', stopMove);
-        window.addEventListener('touchend', stopMove);
+        // 監聽事件
+        sticker.addEventListener('mousedown', startAction);
+        sticker.addEventListener('touchstart', startAction, {passive: false});
+        
+        // 全域移動監聽
+        window.addEventListener('mousemove', onAction);
+        window.addEventListener('touchmove', onAction, {passive: false});
+        
+        // 結束監聽
+        window.addEventListener('mouseup', stopAction);
+        window.addEventListener('touchend', stopAction);
+
+        // 雙擊刪除
         sticker.addEventListener('dblclick', () => sticker.remove());
 
         stage.appendChild(sticker);
@@ -206,6 +225,10 @@
     }
 
     function saveScene() {
+        // 先隱藏提示文字避免被拍進去
+        const info = document.querySelector('.overlay-info');
+        info.style.opacity = '0';
+
         html2canvas(stage, { useCORS: true, scale: 2 }).then(canvas => {
             const link = document.createElement('a');
             const date = new Date().toISOString().slice(0,10);
@@ -213,6 +236,7 @@
             link.download = `${date}_${themeLabel}.png`;
             link.href = canvas.toDataURL("image/png");
             link.click();
+            info.style.opacity = '1';
         });
     }
 
