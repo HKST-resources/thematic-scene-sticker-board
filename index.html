@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>拼出主題情景</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --sidebar-width: 280px;
+            --primary-blue: #4a90e2;
+            --bg-color: #f7f9fc;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: 'PingFang HK', 'Helvetica Neue', Arial, sans-serif;
+            display: flex; height: 100vh; overflow: hidden;
+            background-color: var(--bg-color);
+        }
+
+        /* 側邊欄 */
+        #sidebar {
+            width: var(--sidebar-width); background: white;
+            border-right: 1px solid #d1d9e6; display: flex;
+            flex-direction: column; z-index: 100;
+        }
+
+        .header { padding: 20px; background: var(--primary-blue); color: white; text-align: center; }
+        .control-group { padding: 15px; border-bottom: 1px solid #eee; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #555; }
+        
+        select, button {
+            width: 100%; padding: 12px; border-radius: 8px;
+            border: 1px solid #ccc; font-size: 16px; cursor: pointer;
+        }
+
+        .save-btn { background-color: #4CAF50; color: white; border: none; margin-bottom: 10px; }
+        .clear-btn { background-color: #ff5e5e; color: white; border: none; }
+
+        /* 貼紙選單 */
+        #sticker-drawer {
+            flex-grow: 1; overflow-y: auto; display: grid;
+            grid-template-columns: repeat(2, 1fr); gap: 12px;
+            padding: 15px; background: #fafafa;
+        }
+
+        .sticker-item {
+            width: 100%; aspect-ratio: 1/1; object-fit: contain;
+            cursor: pointer; border-radius: 8px; background: white; padding: 5px;
+            box-sizing: border-box; border: 2px solid transparent;
+        }
+        .sticker-item:hover { border-color: var(--primary-blue); }
+
+        /* 遊戲舞台 */
+        #stage {
+            flex-grow: 1; position: relative;
+            background-size: cover; background-position: center;
+            background-repeat: no-repeat; overflow: hidden; touch-action: none;
+        }
+
+        .placed-item {
+            position: absolute; cursor: move; width: 150px;
+            user-select: none; touch-action: none;
+        }
+
+        .overlay-info {
+            position: absolute; bottom: 15px; right: 15px;
+            background: rgba(255, 255, 255, 0.8); padding: 8px 15px;
+            border-radius: 20px; font-size: 13px; color: #666; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="header">
+        <h2 style="margin:0; font-size: 1.2em;">主題情景</h2>
+    </div>
+
+    <div class="control-group">
+        <label for="theme-select">選擇主題</label>
+        <select id="theme-select" onchange="changeTheme()"></select>
+    </div>
+
+    <div class="control-group">
+        <label>操作選項</label>
+        <button class="save-btn" onclick="saveScene()">儲存圖片</button>
+        <button class="clear-btn" onclick="clearStage()">清空場景</button>
+    </div>
+
+    <div id="sticker-drawer"></div>
+</div>
+
+<div id="stage">
+    <div class="overlay-info">拖動圖片以移動 • 點兩下刪除</div>
+</div>
+
+<script>
+    // 主題資料庫 (內容與之前相同)
+    const themeData = {
+        supermarket: { label: "超級市場", items: ["mother", "father", "boy", "girl", "cart", "cashier", "supermarket-staff", "meat", "fish", "apple", "biscuit", "milk", "ice-cream", "bread", "noodle"] },
+        bedroom: { label: "睡房", items: ["boy", "girl", "bed", "lamp", "wardrobe", "pajama-top", "pajama-pants", "socks", "toy-car", "teddy-bear", "legos", "toy-box", "clock"] },
+        living_room: { label: "客廳", items: ["sofa", "tv", "toy-box", "toy-car", "teddy-bear", "legos", "dining-table", "chairs", "dinner1", "dinner2", "dinner3", "spoon", "chopsticks", "fork", "bowl", "boy", "girl", "mother", "father"] },
+        clinic: { label: "診所", items: ["doctor", "nurse", "boy", "girl", "father", "mother", "syringe", "pill", "cough-medicine", "thermometer", "face-mask", "band-aid", "stethoscope"] },
+        classroom: { label: "課室", items: ["teacher", "boy-in-uniform", "girl-in-uniform", "school-bag", "crayon", "story-books", "toy1", "toy2", "homework-book", "pencil", "eraser", "drawing-book", "scissors", "rice-in-a-bowl", "spoon", "chopsticks", "whiteboard"] },
+        playground: { label: "遊樂場", items: ["boy", "girl", "mother", "father", "swings", "slides", "bench", "tree", "water-bottle", "monkey-climber", "ball", "scooter", "bird"] },
+        transportation: { label: "交通工具", items: ["boy", "girl", "mother", "father", "mtr-train", "light-rail", "bus", "minibus", "taxi", "star-ferry", "octopus-card", "octopus-card-reader"] },
+        restaurant: { label: "餐廳", items: ["boy", "girl", "mother", "father", "waiter", "cashier", "food-menus", "hamburger", "spaghetti", "congee", "curry-rice", "steak", "rice-noodles-in-soup", "a-cup-of-water", "a-cup-of-juice", "a-cup-of-coffee", "chopsticks", "napkin", "spoon", "fork"] },
+        beach: { label: "沙灘", items: ["boy", "girl", "mother", "father", "sandcastle", "bucket", "spade", "swim-ring", "umbrella", "sunscreen", "lifeguard-tower", "crab", "shell", "swimming-suit", "towel", "swimming-glasses", "sunglasses", "sun"] },
+        forest: { label: "森林", items: ["rabbit", "deer", "owl", "fox", "squirrel", "tree-sticks", "apple", "banana", "rock", "flowers", "grass", "tree-log", "mushroom", "girl-goes-hiking", "boy-goes-hiking", "leaves"] }
+    };
+
+    const stage = document.getElementById('stage');
+    const drawer = document.getElementById('sticker-drawer');
+    const themeSelect = document.getElementById('theme-select');
+
+    function init() {
+        for (const key in themeData) {
+            let opt = document.createElement('option');
+            opt.value = key; opt.innerHTML = themeData[key].label;
+            themeSelect.appendChild(opt);
+        }
+        changeTheme();
+    }
+
+    function changeTheme() {
+        const key = themeSelect.value;
+        stage.style.backgroundImage = `url('assets/backgrounds/${key}.jpg')`;
+        drawer.innerHTML = '';
+        themeData[key].items.forEach(itemName => {
+            const img = document.createElement('img');
+            img.src = `assets/items/${key}/${itemName}.png`;
+            img.className = 'sticker-item';
+            img.onclick = () => addToStage(img.src);
+            drawer.appendChild(img);
+        });
+    }
+
+    function addToStage(src) {
+        const sticker = document.createElement('img');
+        sticker.src = src; sticker.className = 'placed-item';
+        
+        // 設定初始位置
+        sticker.style.left = '50px'; sticker.style.top = '50px';
+
+        let isDragging = false;
+        let startX, startY, initX, initY;
+
+        const startMove = (e) => {
+            isDragging = true;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            startX = clientX; startY = clientY;
+            initX = sticker.offsetLeft; initY = sticker.offsetTop;
+            sticker.style.zIndex = 1000;
+        };
+
+        const onMove = (e) => {
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            sticker.style.left = (initX + (clientX - startX)) + 'px';
+            sticker.style.top = (initY + (clientY - startY)) + 'px';
+        };
+
+        const stopMove = () => { isDragging = false; sticker.style.zIndex = 10; };
+
+        sticker.addEventListener('mousedown', startMove);
+        sticker.addEventListener('touchstart', startMove, {passive: false});
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('touchmove', onMove, {passive: false});
+        window.addEventListener('mouseup', stopMove);
+        window.addEventListener('touchend', stopMove);
+        sticker.addEventListener('dblclick', () => sticker.remove());
+
+        stage.appendChild(sticker);
+    }
+
+    function clearStage() {
+        if(confirm("確定要清空場景嗎？")) {
+            document.querySelectorAll('.placed-item').forEach(item => item.remove());
+        }
+    }
+
+    // 儲存圖片功能
+    function saveScene() {
+        // 使用 html2canvas 將舞台轉換成 canvas
+        html2canvas(stage, {
+            useCORS: true, // 允許跨域加載圖片 (GitHub Pages 必需)
+            scale: 2       // 提高導出圖片的清晰度
+        }).then(canvas => {
+            const link = document.createElement('a');
+            const date = new Date().toISOString().slice(0,10);
+            const themeLabel = themeData[themeSelect.value].label;
+            
+            link.download = `${date}_${themeLabel}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
