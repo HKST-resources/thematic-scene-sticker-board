@@ -38,7 +38,6 @@
         .save-btn { background-color: #4CAF50; color: white; border: none; margin-bottom: 10px; }
         .clear-btn { background-color: #ff5e5e; color: white; border: none; }
 
-        /* 貼紙選單 */
         #sticker-drawer {
             flex-grow: 1; overflow-y: auto; display: grid;
             grid-template-columns: repeat(2, 1fr); gap: 12px;
@@ -55,13 +54,17 @@
         /* 遊戲舞台 */
         #stage {
             flex-grow: 1; position: relative;
-            background-size: cover; background-position: center;
-            background-repeat: no-repeat; overflow: hidden; touch-action: none;
+            background-size: contain; /* 確保背景圖完整顯示，不被裁切 */
+            background-position: center;
+            background-repeat: no-repeat;
+            background-color: #e0e0e0; /* 如果圖比例不對，周圍顯示灰色 */
+            overflow: hidden; touch-action: none;
         }
 
         .placed-item {
             position: absolute; cursor: move; width: 150px;
             user-select: none; touch-action: none;
+            transform-origin: center center;
         }
 
         .overlay-info {
@@ -93,11 +96,10 @@
 </div>
 
 <div id="stage">
-    <div class="overlay-info">拖動圖片以移動 • 點兩下刪除</div>
+    <div class="overlay-info">單指移動 • 雙指縮放 • 雙擊刪除</div>
 </div>
 
 <script>
-    // 主題資料庫 (內容與之前相同)
     const themeData = {
         supermarket: { label: "超級市場", items: ["mother", "boy", "cart", "cashier", "supermarket-staff", "meat", "fish", "apple", "biscuit", "milk", "ice-cream", "bread", "noodle"] },
         bedroom: { label: "睡房", items: ["boy", "girl", "bed", "lamp", "wardrobe", "pajama-top", "pajama-pants", "socks", "toy-car", "teddy-bear", "legos", "toy-box", "clock"] },
@@ -140,28 +142,48 @@
     function addToStage(src) {
         const sticker = document.createElement('img');
         sticker.src = src; sticker.className = 'placed-item';
-        
-        // 設定初始位置
         sticker.style.left = '50px'; sticker.style.top = '50px';
 
         let isDragging = false;
         let startX, startY, initX, initY;
+        let scale = 1;
+        let initialDist = 0;
+
+        const getDist = (touches) => {
+            return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+        };
 
         const startMove = (e) => {
-            isDragging = true;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            startX = clientX; startY = clientY;
-            initX = sticker.offsetLeft; initY = sticker.offsetTop;
-            sticker.style.zIndex = 1000;
+            if (e.touches && e.touches.length === 2) {
+                // 進入縮放模式
+                isDragging = false;
+                initialDist = getDist(e.touches);
+            } else {
+                // 進入拖動模式
+                isDragging = true;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                startX = clientX; startY = clientY;
+                initX = sticker.offsetLeft; initY = sticker.offsetTop;
+                sticker.style.zIndex = 1000;
+            }
         };
 
         const onMove = (e) => {
-            if (!isDragging) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            sticker.style.left = (initX + (clientX - startX)) + 'px';
-            sticker.style.top = (initY + (clientY - startY)) + 'px';
+            if (e.touches && e.touches.length === 2) {
+                // 處理雙指縮放
+                const currentDist = getDist(e.touches);
+                const diff = currentDist / initialDist;
+                scale = Math.min(Math.max(0.5, scale * diff), 3); // 限制縮放倍率在 0.5 到 3 之間
+                sticker.style.transform = `scale(${scale})`;
+                initialDist = currentDist;
+            } else if (isDragging) {
+                // 處理單指拖動
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                sticker.style.left = (initX + (clientX - startX)) + 'px';
+                sticker.style.top = (initY + (clientY - startY)) + 'px';
+            }
         };
 
         const stopMove = () => { isDragging = false; sticker.style.zIndex = 10; };
@@ -183,17 +205,11 @@
         }
     }
 
-    // 儲存圖片功能
     function saveScene() {
-        // 使用 html2canvas 將舞台轉換成 canvas
-        html2canvas(stage, {
-            useCORS: true, // 允許跨域加載圖片 (GitHub Pages 必需)
-            scale: 2       // 提高導出圖片的清晰度
-        }).then(canvas => {
+        html2canvas(stage, { useCORS: true, scale: 2 }).then(canvas => {
             const link = document.createElement('a');
             const date = new Date().toISOString().slice(0,10);
             const themeLabel = themeData[themeSelect.value].label;
-            
             link.download = `${date}_${themeLabel}.png`;
             link.href = canvas.toDataURL("image/png");
             link.click();
