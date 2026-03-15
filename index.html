@@ -154,6 +154,7 @@
         const getDist = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
 
         const startAction = (e) => {
+            // iPad 雙擊刪除偵測
             if (e.touches && e.touches.length === 1) {
                 const currentTime = new Date().getTime();
                 const tapLength = currentTime - lastTap;
@@ -223,17 +224,65 @@
     function saveScene() {
         const info = document.querySelector('.overlay-info');
         info.style.opacity = '0';
-        html2canvas(stage, { 
-            useCORS: true, 
-            scale: 2,
-            logging: false,
-            x: 0,
-            y: 0,
-            scrollX: -window.scrollX,
-            scrollY: -window.scrollY,
-            width: stage.offsetWidth,
-            height: stage.offsetHeight
-        }).then(canvas => {
+
+        // 創建 Canvas 以手動繪製，避開插件位移問題
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = stage.offsetWidth;
+        canvas.height = stage.offsetHeight;
+
+        // 1. 繪製背景
+        const bgImg = new Image();
+        bgImg.crossOrigin = "anonymous";
+        const bgUrl = stage.style.backgroundImage.slice(5, -2).replace(/"/g, "");
+        bgImg.src = bgUrl;
+
+        bgImg.onload = () => {
+            // 背景比例計算 (Cover 效果)
+            const stageRatio = canvas.width / canvas.height;
+            const imgRatio = bgImg.width / bgImg.height;
+            let drawW, drawH, drawX, drawY;
+
+            if (imgRatio > stageRatio) {
+                drawH = canvas.height;
+                drawW = bgImg.width * (canvas.height / bgImg.height);
+                drawX = (canvas.width - drawW) / 2;
+                drawY = 0;
+            } else {
+                drawW = canvas.width;
+                drawH = bgImg.height * (canvas.width / bgImg.width);
+                drawX = 0;
+                drawY = (canvas.height - drawH) / 2;
+            }
+            ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
+
+            // 2. 遍歷並繪製貼紙
+            const stickers = Array.from(document.querySelectorAll('.placed-item'));
+            if (stickers.length === 0) {
+                finalize();
+                return;
+            }
+
+            let loadedCount = 0;
+            stickers.forEach(sticker => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.src = sticker.src;
+                img.onload = () => {
+                    const rect = sticker.getBoundingClientRect();
+                    const stageRect = stage.getBoundingClientRect();
+                    // 根據實際物理位置計算相對座標，解決位移問題
+                    const x = rect.left - stageRect.left;
+                    const y = rect.top - stageRect.top;
+                    ctx.drawImage(img, x, y, rect.width, rect.height);
+                    
+                    loadedCount++;
+                    if (loadedCount === stickers.length) finalize();
+                };
+            });
+        };
+
+        function finalize() {
             const link = document.createElement('a');
             const date = new Date().toISOString().slice(0,10);
             const themeLabel = themeData[themeSelect.value].label;
@@ -241,7 +290,7 @@
             link.href = canvas.toDataURL("image/png");
             link.click();
             info.style.opacity = '1';
-        });
+        }
     }
 
     init();
