@@ -52,18 +52,20 @@
 
         #stage {
             flex-grow: 1; position: relative;
-            background-size: contain; 
+            /* 改為 cover 以填滿空間，消除灰邊 */
+            background-size: cover; 
             background-position: center;
             background-repeat: no-repeat;
-            background-color: #e0e0e0;
+            background-color: #fff;
             overflow: hidden; touch-action: none;
         }
 
         .placed-item {
             position: absolute; cursor: move; width: 150px;
             user-select: none; touch-action: none;
+            /* 優化變換效果，防止截圖位移 */
             transform-origin: center center;
-            /* 避免點擊時出現藍色外框 */
+            will-change: transform, left, top;
             -webkit-tap-highlight-color: transparent;
         }
 
@@ -100,6 +102,7 @@
 </div>
 
 <script>
+    // 資料庫內容保持不變
     const themeData = {
         supermarket: { label: "超級市場", items: ["mother", "boy", "cart", "cashier", "supermarket-staff", "meat", "fish", "apple", "biscuit", "milk", "ice-cream", "bread", "noodle"] },
         bedroom: { label: "睡房", items: ["boy", "girl", "bed", "lamp", "wardrobe", "pajama-top", "pajama-pants", "socks", "toy-car", "teddy-bear", "legos", "toy-box", "clock"] },
@@ -116,8 +119,6 @@
     const stage = document.getElementById('stage');
     const drawer = document.getElementById('sticker-drawer');
     const themeSelect = document.getElementById('theme-select');
-
-    // 全域變數，紀錄目前正在操作的貼紙
     let activeSticker = null;
 
     function init() {
@@ -145,22 +146,19 @@
     function addToStage(src) {
         const sticker = document.createElement('img');
         sticker.src = src; sticker.className = 'placed-item';
-        sticker.style.left = '100px'; sticker.style.top = '100px';
+        // 初始位置改為百分比，增加靈活性
+        sticker.style.left = '20%'; sticker.style.top = '20%';
 
-        // 每個貼紙獨立的縮放比例
         let currentScale = 1;
         let initialDist = 0;
         let isDragging = false;
         let startX, startY, initX, initY;
 
-        const getDist = (touches) => {
-            return Math.hypot(touches[0].clientX - touches[1].clientX, touches[1].clientY - touches[1].clientY);
-        };
+        const getDist = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
 
         const startAction = (e) => {
-            activeSticker = sticker; // 設定當前操作對象
-            sticker.style.zIndex = 2000; // 置頂
-
+            activeSticker = sticker;
+            sticker.style.zIndex = 2000;
             if (e.touches && e.touches.length === 2) {
                 isDragging = false;
                 initialDist = getDist(e.touches);
@@ -174,17 +172,15 @@
         };
 
         const onAction = (e) => {
-            if (activeSticker !== sticker) return; // 重要：如果不是目前操作的貼紙，就不執行邏輯
-
+            if (activeSticker !== sticker) return;
             if (e.touches && e.touches.length === 2) {
-                // 處理雙指縮放
                 const currentDist = getDist(e.touches);
                 const ratio = currentDist / initialDist;
                 currentScale = Math.min(Math.max(0.3, currentScale * ratio), 4);
+                // 使用單一 transform 避免 html2canvas 混亂
                 sticker.style.transform = `scale(${currentScale})`;
                 initialDist = currentDist;
             } else if (isDragging) {
-                // 處理單指移動
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 sticker.style.left = (initX + (clientX - startX)) + 'px';
@@ -193,28 +189,22 @@
         };
 
         const stopAction = () => {
-            isDragging = false;
             if (activeSticker === sticker) {
+                isDragging = false;
                 sticker.style.zIndex = 10;
-                activeSticker = null; // 釋放操作對象
+                activeSticker = null;
             }
         };
 
-        // 監聽事件
-        sticker.addEventListener('mousedown', startAction);
         sticker.addEventListener('touchstart', startAction, {passive: false});
-        
-        // 全域移動監聽
-        window.addEventListener('mousemove', onAction);
         window.addEventListener('touchmove', onAction, {passive: false});
-        
-        // 結束監聽
-        window.addEventListener('mouseup', stopAction);
         window.addEventListener('touchend', stopAction);
-
-        // 雙擊刪除
+        
+        sticker.addEventListener('mousedown', startAction);
+        window.addEventListener('mousemove', onAction);
+        window.addEventListener('mouseup', stopAction);
+        
         sticker.addEventListener('dblclick', () => sticker.remove());
-
         stage.appendChild(sticker);
     }
 
@@ -225,13 +215,20 @@
     }
 
     function saveScene() {
-        // 先隱藏提示文字避免被拍進去
         const info = document.querySelector('.overlay-info');
         info.style.opacity = '0';
 
-        html2canvas(stage, { useCORS: true, scale: 2 }).then(canvas => {
+        // 強制渲染前回到頂部，防止截圖位移
+        window.scrollTo(0,0);
+
+        html2canvas(stage, { 
+            useCORS: true, 
+            scale: 2,
+            logging: false,
+            backgroundColor: null // 保持透明背景
+        }).then(canvas => {
             const link = document.createElement('a');
-            const date = new Date().toISOString().slice(0,10);
+            const date = new Date().toLocaleDateString().replace(/\//g, '-');
             const themeLabel = themeData[themeSelect.value].label;
             link.download = `${date}_${themeLabel}.png`;
             link.href = canvas.toDataURL("image/png");
