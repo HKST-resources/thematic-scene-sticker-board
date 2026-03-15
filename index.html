@@ -52,20 +52,20 @@
 
         #stage {
             flex-grow: 1; position: relative;
-            /* 改為 cover 以填滿空間，消除灰邊 */
             background-size: cover; 
             background-position: center;
             background-repeat: no-repeat;
             background-color: #fff;
             overflow: hidden; touch-action: none;
+            /* 確保舞台有明確的邊界參考 */
+            box-sizing: border-box;
         }
 
         .placed-item {
             position: absolute; cursor: move; width: 150px;
             user-select: none; touch-action: none;
-            /* 優化變換效果，防止截圖位移 */
             transform-origin: center center;
-            will-change: transform, left, top;
+            will-change: transform;
             -webkit-tap-highlight-color: transparent;
         }
 
@@ -102,7 +102,6 @@
 </div>
 
 <script>
-    // 資料庫內容保持不變
     const themeData = {
         supermarket: { label: "超級市場", items: ["mother", "boy", "cart", "cashier", "supermarket-staff", "meat", "fish", "apple", "biscuit", "milk", "ice-cream", "bread", "noodle"] },
         bedroom: { label: "睡房", items: ["boy", "girl", "bed", "lamp", "wardrobe", "pajama-top", "pajama-pants", "socks", "toy-car", "teddy-bear", "legos", "toy-box", "clock"] },
@@ -146,8 +145,7 @@
     function addToStage(src) {
         const sticker = document.createElement('img');
         sticker.src = src; sticker.className = 'placed-item';
-        // 初始位置改為百分比，增加靈活性
-        sticker.style.left = '20%'; sticker.style.top = '20%';
+        sticker.style.left = '100px'; sticker.style.top = '100px';
 
         let currentScale = 1;
         let initialDist = 0;
@@ -159,13 +157,14 @@
         const startAction = (e) => {
             activeSticker = sticker;
             sticker.style.zIndex = 2000;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
             if (e.touches && e.touches.length === 2) {
                 isDragging = false;
                 initialDist = getDist(e.touches);
             } else {
                 isDragging = true;
-                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 startX = clientX; startY = clientY;
                 initX = sticker.offsetLeft; initY = sticker.offsetTop;
             }
@@ -177,7 +176,6 @@
                 const currentDist = getDist(e.touches);
                 const ratio = currentDist / initialDist;
                 currentScale = Math.min(Math.max(0.3, currentScale * ratio), 4);
-                // 使用單一 transform 避免 html2canvas 混亂
                 sticker.style.transform = `scale(${currentScale})`;
                 initialDist = currentDist;
             } else if (isDragging) {
@@ -199,11 +197,9 @@
         sticker.addEventListener('touchstart', startAction, {passive: false});
         window.addEventListener('touchmove', onAction, {passive: false});
         window.addEventListener('touchend', stopAction);
-        
         sticker.addEventListener('mousedown', startAction);
         window.addEventListener('mousemove', onAction);
         window.addEventListener('mouseup', stopAction);
-        
         sticker.addEventListener('dblclick', () => sticker.remove());
         stage.appendChild(sticker);
     }
@@ -218,17 +214,23 @@
         const info = document.querySelector('.overlay-info');
         info.style.opacity = '0';
 
-        // 強制渲染前回到頂部，防止截圖位移
-        window.scrollTo(0,0);
+        // 核心修正：取得舞台的精確物理座標
+        const rect = stage.getBoundingClientRect();
 
         html2canvas(stage, { 
             useCORS: true, 
             scale: 2,
             logging: false,
-            backgroundColor: null // 保持透明背景
+            // 強制設定截圖的起始點與尺寸，防止位移
+            x: 0,
+            y: 0,
+            scrollX: -window.scrollX,
+            scrollY: -window.scrollY,
+            width: stage.offsetWidth,
+            height: stage.offsetHeight
         }).then(canvas => {
             const link = document.createElement('a');
-            const date = new Date().toLocaleDateString().replace(/\//g, '-');
+            const date = new Date().toISOString().slice(0,10);
             const themeLabel = themeData[themeSelect.value].label;
             link.download = `${date}_${themeLabel}.png`;
             link.href = canvas.toDataURL("image/png");
