@@ -4,12 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>拼出主題情景</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         :root {
-            --sidebar-width: 280px;
+            --sidebar-width: 250px;
             --primary-blue: #4a90e2;
-            --bg-color: #f7f9fc;
+            --bg-color: #f0f2f5;
         }
 
         body {
@@ -19,43 +18,57 @@
             background-color: var(--bg-color);
         }
 
+        /* 側邊欄優化：移除 Header，緊湊佈局 */
         #sidebar {
             width: var(--sidebar-width); background: white;
             border-right: 1px solid #d1d9e6; display: flex;
             flex-direction: column; z-index: 100;
         }
 
-        .header { padding: 20px; background: var(--primary-blue); color: white; text-align: center; }
-        .control-group { padding: 15px; border-bottom: 1px solid #eee; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; color: #555; }
-        
-        select, button {
-            width: 100%; padding: 12px; border-radius: 8px;
-            border: 1px solid #ccc; font-size: 16px; cursor: pointer;
+        .compact-controls {
+            padding: 10px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
         }
 
-        .save-btn { background-color: #4CAF50; color: white; border: none; margin-bottom: 10px; }
-        .clear-btn { background-color: #ff5e5e; color: white; border: none; }
+        select {
+            width: 100%; padding: 8px; border-radius: 6px;
+            border: 1px solid #ddd; font-size: 15px; margin-bottom: 8px;
+            background-color: #f9f9f9;
+        }
 
+        .button-group {
+            display: flex; gap: 5px;
+        }
+
+        .btn-sm {
+            flex: 1; padding: 6px; border-radius: 6px; border: none;
+            font-size: 13px; cursor: pointer; color: white;
+            transition: opacity 0.2s;
+        }
+        .save-btn { background-color: #4CAF50; }
+        .clear-btn { background-color: #ff5e5e; }
+
+        /* 增加貼紙欄位空間 */
         #sticker-drawer {
             flex-grow: 1; overflow-y: auto; display: grid;
-            grid-template-columns: repeat(2, 1fr); gap: 12px;
-            padding: 15px; background: #fafafa;
+            grid-template-columns: repeat(2, 1fr); gap: 10px;
+            padding: 10px; background: #fafafa;
         }
 
         .sticker-item {
             width: 100%; aspect-ratio: 1/1; object-fit: contain;
-            cursor: pointer; border-radius: 8px; background: white; padding: 5px;
-            box-sizing: border-box; border: 2px solid transparent;
+            cursor: pointer; border-radius: 6px; background: white; 
+            padding: 3px; box-sizing: border-box; border: 1px solid #eee;
         }
-        .sticker-item:hover { border-color: var(--primary-blue); }
 
+        /* 舞台優化：改為 contain 確保背景不被裁切 */
         #stage {
             flex-grow: 1; position: relative;
-            background-size: cover; 
+            background-size: contain; 
             background-position: center;
             background-repeat: no-repeat;
-            background-color: #fff;
+            background-color: #dcdde1; /* 留白處顯示深灰色，方便辨識邊界 */
             overflow: hidden; touch-action: none;
         }
 
@@ -68,30 +81,22 @@
         }
 
         .overlay-info {
-            position: absolute; bottom: 15px; right: 15px;
-            background: rgba(255, 255, 255, 0.8); padding: 8px 15px;
-            border-radius: 20px; font-size: 13px; color: #666; pointer-events: none;
+            position: absolute; bottom: 10px; right: 10px;
+            background: rgba(0, 0, 0, 0.5); padding: 5px 12px;
+            border-radius: 15px; font-size: 11px; color: white; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <div class="header">
-        <h2 style="margin:0; font-size: 1.2em;">主題情景</h2>
-    </div>
-
-    <div class="control-group">
-        <label for="theme-select">選擇主題</label>
+    <div class="compact-controls">
         <select id="theme-select" onchange="changeTheme()"></select>
+        <div class="button-group">
+            <button class="btn-sm save-btn" onclick="saveScene()">儲存</button>
+            <button class="btn-sm clear-btn" onclick="clearStage()">清空</button>
+        </div>
     </div>
-
-    <div class="control-group">
-        <label>操作選項</label>
-        <button class="save-btn" onclick="saveScene()">儲存圖片</button>
-        <button class="clear-btn" onclick="clearStage()">清空場景</button>
-    </div>
-
     <div id="sticker-drawer"></div>
 </div>
 
@@ -143,40 +148,31 @@
     function addToStage(src) {
         const sticker = document.createElement('img');
         sticker.src = src; sticker.className = 'placed-item';
-        sticker.style.left = '100px'; sticker.style.top = '100px';
+        sticker.style.left = '50px'; sticker.style.top = '50px';
 
         let currentScale = 1;
         let initialDist = 0;
         let isDragging = false;
-        let startX, startY, initX, initY;
-        let lastTap = 0;
+        let startX, startY, initX, initY, lastTap = 0;
 
         const getDist = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
 
         const startAction = (e) => {
-            // iPad 雙擊刪除偵測
             if (e.touches && e.touches.length === 1) {
                 const currentTime = new Date().getTime();
-                const tapLength = currentTime - lastTap;
-                if (tapLength < 300 && tapLength > 0) {
-                    sticker.remove();
-                    e.preventDefault();
-                    return;
+                if (currentTime - lastTap < 300) {
+                    sticker.remove(); e.preventDefault(); return;
                 }
                 lastTap = currentTime;
             }
-
             activeSticker = sticker;
             sticker.style.zIndex = 2000;
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
             if (e.touches && e.touches.length === 2) {
-                isDragging = false;
-                initialDist = getDist(e.touches);
+                isDragging = false; initialDist = getDist(e.touches);
             } else {
-                isDragging = true;
-                startX = clientX; startY = clientY;
+                isDragging = true; startX = clientX; startY = clientY;
                 initX = sticker.offsetLeft; initY = sticker.offsetTop;
             }
         };
@@ -185,8 +181,7 @@
             if (activeSticker !== sticker) return;
             if (e.touches && e.touches.length === 2) {
                 const currentDist = getDist(e.touches);
-                const ratio = currentDist / initialDist;
-                currentScale = Math.min(Math.max(0.3, currentScale * ratio), 4);
+                currentScale = Math.min(Math.max(0.3, currentScale * (currentDist / initialDist)), 4);
                 sticker.style.transform = `scale(${currentScale})`;
                 initialDist = currentDist;
             } else if (isDragging) {
@@ -199,9 +194,7 @@
 
         const stopAction = () => {
             if (activeSticker === sticker) {
-                isDragging = false;
-                sticker.style.zIndex = 10;
-                activeSticker = null;
+                isDragging = false; sticker.style.zIndex = 10; activeSticker = null;
             }
         };
 
@@ -225,43 +218,32 @@
         const info = document.querySelector('.overlay-info');
         info.style.opacity = '0';
 
-        // 創建 Canvas 以手動繪製，避開插件位移問題
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = stage.offsetWidth;
         canvas.height = stage.offsetHeight;
 
-        // 1. 繪製背景
         const bgImg = new Image();
         bgImg.crossOrigin = "anonymous";
         const bgUrl = stage.style.backgroundImage.slice(5, -2).replace(/"/g, "");
         bgImg.src = bgUrl;
 
         bgImg.onload = () => {
-            // 背景比例計算 (Cover 效果)
-            const stageRatio = canvas.width / canvas.height;
-            const imgRatio = bgImg.width / bgImg.height;
-            let drawW, drawH, drawX, drawY;
+            // 背景繪製邏輯：改為 contain 模式繪製
+            const sW = canvas.width, sH = canvas.height;
+            const iW = bgImg.width, iH = bgImg.height;
+            const ratio = Math.min(sW / iW, sH / iH);
+            const dW = iW * ratio, dH = iH * ratio;
+            const dX = (sW - dW) / 2, dY = (sH - dH) / 2;
 
-            if (imgRatio > stageRatio) {
-                drawH = canvas.height;
-                drawW = bgImg.width * (canvas.height / bgImg.height);
-                drawX = (canvas.width - drawW) / 2;
-                drawY = 0;
-            } else {
-                drawW = canvas.width;
-                drawH = bgImg.height * (canvas.width / bgImg.width);
-                drawX = 0;
-                drawY = (canvas.height - drawH) / 2;
-            }
-            ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
+            // 先塗底色（與 CSS 背景色一致）
+            ctx.fillStyle = "#dcdde1";
+            ctx.fillRect(0, 0, sW, sH);
+            // 畫上背景圖
+            ctx.drawImage(bgImg, dX, dY, dW, dH);
 
-            // 2. 遍歷並繪製貼紙
             const stickers = Array.from(document.querySelectorAll('.placed-item'));
-            if (stickers.length === 0) {
-                finalize();
-                return;
-            }
+            if (stickers.length === 0) { finalize(canvas); return; }
 
             let loadedCount = 0;
             stickers.forEach(sticker => {
@@ -271,22 +253,16 @@
                 img.onload = () => {
                     const rect = sticker.getBoundingClientRect();
                     const stageRect = stage.getBoundingClientRect();
-                    // 根據實際物理位置計算相對座標，解決位移問題
-                    const x = rect.left - stageRect.left;
-                    const y = rect.top - stageRect.top;
-                    ctx.drawImage(img, x, y, rect.width, rect.height);
-                    
-                    loadedCount++;
-                    if (loadedCount === stickers.length) finalize();
+                    ctx.drawImage(img, rect.left - stageRect.left, rect.top - stageRect.top, rect.width, rect.height);
+                    if (++loadedCount === stickers.length) finalize(canvas);
                 };
             });
         };
 
-        function finalize() {
+        function finalize(canvas) {
             const link = document.createElement('a');
             const date = new Date().toISOString().slice(0,10);
-            const themeLabel = themeData[themeSelect.value].label;
-            link.download = `${date}_${themeLabel}.png`;
+            link.download = `${date}_${themeData[themeSelect.value].label}.png`;
             link.href = canvas.toDataURL("image/png");
             link.click();
             info.style.opacity = '1';
